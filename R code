@@ -1,2 +1,255 @@
-this is a new file
-Author: Jiejie Wang
+## *****************************************************
+## Author: Jiejie Wang 
+##******************************************************
+
+
+## this is an indicator of nth loop, increased by 1 after each iteration
+counter=1
+
+
+
+for (int in c(12,95,94,105,375,746,316,318,97,833)){
+  
+  ###########################
+  ## target species-------------
+  targetspp=tree_all[tree_all$SpeciesFIA==int,]
+  ## overstory dataset
+  targetspp_over=targetspp[targetspp$Canopy_Jiejie_FieldCrew==1,-c(1,2)]
+  ## understory dataset
+  targetspp_under=targetspp[targetspp$Canopy_Jiejie_FieldCrew==2,-c(1,2)]
+
+  #################################################################
+  # GBM for target species
+  #################################################################
+  
+  ### overstory trees----------------------------------------------------
+  ## set up training and testing dataset
+  set.seed(1)
+  n <- nrow(targetspp_over)
+  # number of rows for the training set (80% of the dataset)
+  n_train <- round(0.80 * n)
+  # create a vector of indices which is an 80% random sample
+  train_indices <- sample(1:n, n_train)
+  # subset the data frame to training indices only
+  targetspp_train_over <- targetspp_over[train_indices, ]  
+  # exclude the training indices to create the test set
+  targetspp_test_over <- targetspp_over[-train_indices, ]
+  
+  
+  ##########################################################
+  ### Model for overstory trees
+  targetspp_model_over <- gbm(formula =  BAI ~ CMI + FFP+ Max_ST+
+                                DBH + Slope + Aspect_Cat+ Moist+
+                                CC9 + SW,
+                              data = targetspp_train_over,
+                              shrinkage = 0.1,
+                              interaction.depth = 2,
+                              n.trees =1000,
+                              n.minobsinnode = 5,
+                              cv=10)
+
+  
+  
+  ## goodness-of-fit on training set
+  cor_train_over=cor(targetspp_model_over$fit, targetspp_train_over$BAI)^2  
+  ## predict the model ---------------------------------------
+  predict_targetspp_train_over=predict.gbm(object=targetspp_model_over, newdata=targetspp_train_over, n.trees=1000)
+  rmse_train_over=rmse(targetspp_train_over$BAI, predict_targetspp_train_over)/(max(targetspp_train_over$BAI)-min(targetspp_train_over$BAI))
+  ## testing set
+  predict_targetspp_test_over <- predict.gbm(object=targetspp_model_over, newdata=targetspp_test_over, n.trees=1000)
+  rmse_test_over=rmse(targetspp_test_over$BAI, predict_targetspp_test_over)/(max(targetspp_train_over$BAI)-min(targetspp_train_over$BAI))
+  cor_test_over=cor(predict_targetspp_test_over, targetspp_test_over$BAI)^2
+  
+  
+  
+  
+  ### understory trees----------------------------------------------------
+  ## set up training and testing dataset
+  n <- nrow(targetspp_under)
+  # number of rows for the training set (80% of the dataset)
+  n_train <- round(0.80 * n)
+  # create a vector of indices which is an 80% random sample
+  train_indices <- sample(1:n, n_train)
+  # subset the data frame to training indices only
+  targetspp_train_under <- targetspp_under[train_indices, ]  
+  # exclude the training indices to create the test set
+  targetspp_test_under <- targetspp_under[-train_indices, ]
+  
+  ##########################################################
+  ### Model for understory trees
+  targetspp_model_under <- gbm(formula =  BAI ~ CMI + FFP+ Max_ST+
+                               DBH + Slope + Aspect_Cat+ Moist+
+                                 CC9 + SW,
+                               data = targetspp_train_under,
+                               shrinkage = 0.1,
+                               interaction.depth = 2,
+                               n.trees =1000,
+                               n.minobsinnode = 5,
+                               cv=10)
+  
+  ## goodness-of-fit on training set
+  cor_train_under=cor(targetspp_model_under$fit, targetspp_train_under$BAI)^2  
+  ## predict the model ---------------------------------------
+  predict_targetspp_train_under=predict.gbm(object=targetspp_model_under, newdata=targetspp_train_under, n.trees=1000)
+  rmse_train_under=rmse(targetspp_train_under$BAI, predict_targetspp_train_under)/(max(targetspp_train_over$BAI)-min(targetspp_train_over$BAI))
+  ## testing set
+  predict_targetspp_test_under <- predict.gbm(object=targetspp_model_under, newdata=targetspp_test_under, n.trees=1000)
+  rmse_test_under=rmse(targetspp_test_under$BAI, predict_targetspp_test_under)/(max(targetspp_train_over$BAI)-min(targetspp_train_over$BAI))
+  cor_test_under=cor(predict_targetspp_test_under, targetspp_test_under$BAI)^2
+
+  ##### PDP of CMI  ----------------------------------------
+  ## CMI on overstory trees
+  targetspp_over_cmi=partial(targetspp_model_over, pred.var="CMI", chull=T, n.trees=1000,
+                             trim.outliers=T,rug=T, train=targetspp_over, grid.resolution = 200)
+  colnames(targetspp_over_cmi)[2]="BAI"
+  targetspp_over_cmi$Canopy="Overstory"
+  targetspp_over_cmi=targetspp_over_cmi[targetspp_over_cmi$CMI<=quantile(targetspp_over$CMI,0.975,na.rm=T)&
+                                          targetspp_over_cmi$CMI>=quantile(targetspp_over$CMI,0.025,na.rm=T),]
+  
+  ## CMI on understory trees
+  targetspp_under_cmi=partial(targetspp_model_under, pred.var="CMI", chull=T, n.trees=1000,
+                              trim.outliers=T,rug=T, train=targetspp_under, grid.resolution = 200)
+  colnames(targetspp_under_cmi)[2]="BAI"
+  targetspp_under_cmi$Canopy="Understory"
+  targetspp_under_cmi=targetspp_under_cmi[targetspp_under_cmi$CMI<=quantile(targetspp_under$CMI,0.975,na.rm=T)&
+                                            targetspp_under_cmi$CMI>=quantile(targetspp_under$CMI,0.025,na.rm=T),]
+  
+  ### combine CMI for different canopy position----------------------------
+  cmi_canopy=rbind(targetspp_over_cmi, targetspp_under_cmi)
+  
+}
+
+
+
+
+## growth projection -----------------------------
+proj_plot_over_under=matrix(, nrow = 100000, ncol=8)
+colnames(proj_plot_over_under)=c("UniquePlotID",
+                                 "Under_Proj_base_PlotSum_ha","Under_Proj_RCP4.5_PlotSum_ha","Under_Proj_RCP8.5_PlotSum_ha",
+                                 "Over_Proj_base_PlotSum_ha","Over_Proj_RCP4.5_PlotSum_ha","Over_Proj_RCP8.5_PlotSum_ha",
+                                 "SpeciesFIA")
+
+
+
+
+####################################
+### get targetspp dataset
+for (int in c(12,95,94,105,375,746,316,318,97,833)){
+  
+  #genrate the target spp
+  targetspp=tree_all_proj[tree_all_proj$SpeciesFIA==int,]
+  targetspp=targetspp%>% group_by(UniqueTreeID) %>% filter(Year==max(Year))
+  # overstory
+  targetspp_over=targetspp[targetspp$Canopy_Jiejie_FieldCrew==1,]
+  # understory
+  targetspp_under=targetspp[targetspp$Canopy_Jiejie_FieldCrew==2,]
+  
+  ############################
+  # read in the fitted gbm----
+  gbm_targetspp_over=readRDS(paste0("C:/Users/GBM_Over_SPCD",int,".rds"))
+  gbm_targetspp_under=readRDS(paste0("C:/Users/GBM_Under_SPCD",int,".rds"))
+  
+  
+  ## for overstory trees------------------------
+  ###############################################
+  # make projection on the baseline of overstory
+  targetspp_over_proj_base=targetspp_over[,c("FFP_base","CMI_base","Max_ST_base",
+                                             "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_over_proj_base)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_over_proj_base_1=predict.gbm(gbm_targetspp_over, targetspp_over_proj_base)
+  targetspp_over_proj_base_1=as.matrix(targetspp_over_proj_base_1)
+  colnames(targetspp_over_proj_base_1)="Project_base_over"
+  
+  targetspp_over_proj=cbind(targetspp_over, targetspp_over_proj_base_1)
+  
+  
+  ###############################################
+  # make projection on the PRC4.5 of overstory
+  targetspp_over_proj_rcp4.5=targetspp_over[,c("FFP_4.5","CMI_50_45","Max_ST_4.5",
+                                               "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_over_proj_rcp4.5)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_over_proj_rcp4.5=predict.gbm(gbm_targetspp_over, targetspp_over_proj_rcp4.5)
+  targetspp_over_proj_rcp4.5=as.matrix(targetspp_over_proj_rcp4.5)
+  colnames(targetspp_over_proj_rcp4.5)="Project_rcp4.5_over"
+  
+  
+  ###############################################
+  # make projection on the PRC8.5 of overstory
+  targetspp_over_proj_rcp8.5=targetspp_over[,c("FFP_8.5","CMI_50_85","Max_ST_8.5",
+                                               "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_over_proj_rcp8.5)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_over_proj_rcp8.5=predict.gbm(gbm_targetspp_over, targetspp_over_proj_rcp8.5)
+  targetspp_over_proj_rcp8.5=as.matrix(targetspp_over_proj_rcp8.5)
+  colnames(targetspp_over_proj_rcp8.5)="Project_rcp8.5_over"
+  
+  ## bind projections (baseline, RCP4.5 and 8.5)
+  targetspp_over_proj=cbind(targetspp_over_proj, targetspp_over_proj_rcp4.5,targetspp_over_proj_rcp8.5)
+  
+  ##########################################
+  # sum per plot scale per 
+  targetspp_over_proj_PlotSum_ha=aggregate(cbind(targetspp_over_proj$Project_base_over*targetspp_over_proj$TreeFactor, 
+                                                 targetspp_over_proj$Project_rcp4.5_over * targetspp_over_proj$TreeFactor,
+                                                 targetspp_over_proj$Project_rcp8.5_over * targetspp_over_proj$TreeFactor), 
+                                           by=list(targetspp_over_proj$UniquePlotID), FUN=sum)
+  colnames(targetspp_over_proj_PlotSum_ha)=c("UniquePlotID","Over_Proj_base_PlotSum_ha",
+                                             "Over_Proj_RCP4.5_PlotSum_ha","Over_Proj_RCP8.5_PlotSum_ha")
+
+  
+  ## for understory------------------------------
+  ###############################################
+  # make projection on the baseline of understory
+  targetspp_under_proj_base=targetspp_under[,c("FFP","CMI","Max_ST",
+                                               "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_under_proj_base)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_under_proj_base_1=predict.gbm(gbm_targetspp_under, targetspp_under_proj_base)
+  targetspp_under_proj_base_1=as.matrix(targetspp_under_proj_base_1)
+  colnames(targetspp_under_proj_base_1)="Project_base_under"
+  
+  targetspp_under_proj=cbind(targetspp_under, targetspp_under_proj_base_1)
+  
+  ###############################################
+  # make projection on the RCP4.5 of understory
+  targetspp_under_proj_rcp4.5=targetspp_under[,c("FFP_4.5","CMI_50_45","Max_ST_4.5",
+                                                 "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_under_proj_rcp4.5)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_under_proj_rcp4.5_1=predict.gbm(gbm_targetspp_under, targetspp_under_proj_rcp4.5)
+  targetspp_under_proj_rcp4.5_1=as.matrix(targetspp_under_proj_rcp4.5_1)
+  colnames(targetspp_under_proj_rcp4.5_1)="Project_rcp4.5_under"
+  
+  
+  ###############################################
+  # make projection on the PRC8.5 of understory
+  targetspp_under_proj_rcp8.5=targetspp_under[,c("FFP_8.5","CMI_50_85","Max_ST_8.5",
+                                                 "DBH","Slope","Aspect_Cat","Moist","CC9","SW")]
+  colnames(targetspp_under_proj_rcp8.5)[c(1,2,3)]=c("FFP","CMI","Max_ST")
+  targetspp_under_proj_rcp8.5_1=predict.gbm(gbm_targetspp_under, targetspp_under_proj_rcp8.5)
+  targetspp_under_proj_rcp8.5_1=as.matrix(targetspp_under_proj_rcp8.5_1)
+  colnames(targetspp_under_proj_rcp8.5_1)="Project_rcp8.5_under"
+  
+  targetspp_under_proj=cbind(targetspp_under_proj, targetspp_under_proj_rcp4.5_1,targetspp_under_proj_rcp8.5_1)
+  
+  
+  ##########################################
+  # sum per plot scale per 
+  targetspp_under_proj_PlotSum_ha=aggregate(cbind(targetspp_under_proj$Project_base_under*targetspp_under_proj$TreeFactor, 
+                                                  targetspp_under_proj$Project_rcp4.5_under * targetspp_under_proj$TreeFactor,
+                                                  targetspp_under_proj$Project_rcp8.5_under * targetspp_under_proj$TreeFactor), 
+                                            by=list(targetspp_under_proj$UniquePlotID), FUN=sum)
+  colnames(targetspp_under_proj_PlotSum_ha)=c("UniquePlotID","Under_Proj_base_PlotSum_ha",
+                                              "Under_Proj_RCP4.5_PlotSum_ha","Under_Proj_RCP8.5_PlotSum_ha")
+  
+  #-----------------------------------------------------------
+  ## merge understory and overstory projection (plot level)---
+  targetspp_over_under_proj_PlotSum_ha=merge(targetspp_under_proj_PlotSum_ha,
+                                             targetspp_over_proj_PlotSum_ha,
+                                             by="UniquePlotID")
+  
+  ### get species code
+  targetspp_over_under_proj_PlotSum_ha$SpeciesFIA=int
+  proj_plot_over_under[c((nrow(proj_plot_over_under[complete.cases(proj_plot_over_under),])+1):
+                           (nrow(proj_plot_over_under[complete.cases(proj_plot_over_under),])+nrow(targetspp_over_under_proj_PlotSum_ha))),]=
+    as.matrix(targetspp_over_under_proj_PlotSum_ha)
+  
+}
+
+
