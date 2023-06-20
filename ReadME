@@ -20,3 +20,11 @@ SMR (Soil Moisture Regime)
 2 (mesic)
 3 (hydric)
 
+Aspect
+1 (cold)
+2 (moderate)
+3 (warm)
+
+Canopy (tree canopy position)
+1 (overstory)
+2 (understory)
